@@ -32,8 +32,16 @@ public class BookServiceImpl implements IBookService {
     @Override
     public Mono<BookDTO> findById(String id) {
         return bookRepository
-                .findByBookId(id)
-                .map(bookMapper::toDTO);
+                .findByBookId(id) //MongoReactive: 1 - Mono<Book> | 0 - Mono.empty(); Se ejecuta el switchIfEmpty!
+                .switchIfEmpty(Mono.error(new RuntimeException("Book not found or available")))
+                .flatMap(book -> {
+                    if(!book.getAvailable()){
+                        return Mono.error(new RuntimeException("Book not available"));
+                    }
+                    return Mono.just(book);
+                })
+                .map(book -> bookMapper.toDTO(book));
+
     }
 
     @Override

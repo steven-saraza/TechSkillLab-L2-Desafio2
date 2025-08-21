@@ -7,9 +7,13 @@ import co.com.techskill.lab2.library.repository.IBookRepository;
 import co.com.techskill.lab2.library.repository.IPetitionRepository;
 import co.com.techskill.lab2.library.service.IPetitionService;
 
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.reactor.circuitbreaker.operator.CircuitBreakerOperator;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -23,6 +27,7 @@ public class PetitionServiceImpl implements IPetitionService {
     private final IPetitionRepository petitionRepository;
     private final IBookRepository bookRepository;
     private final PetitionMapper petitionMapper;
+    CircuitBreaker circuitBreaker = CircuitBreaker.ofDefaults("petitionService");
 
     public PetitionServiceImpl(IPetitionRepository petitionRepository, IBookRepository bookRepository) {
         this.petitionRepository = petitionRepository;
@@ -72,13 +77,33 @@ public class PetitionServiceImpl implements IPetitionService {
     //TO-DO: Simular una petición con tipo = LEND que falla si el libro asociado no está disponible.
     @Override
     public Flux<String> processPetition(PetitionDTO petitionDTO) {
-        return null;
+        return petitionRepository.findAll()
+                .filter(petition -> "LEND".equals(petitionDTO.getType()))
+                .switchIfEmpty(Mono.error(new RuntimeException("Petition of type LEND not found")))
+                .flatMap(petition -> bookRepository.findByBookId(petition.getBookId())
+                        .map(book -> "Petition approved for book: " + book.getBookId())
+
+                ).onErrorResume(e -> Mono.just("Petition failed for book: " + petitionDTO.getBookId() + e.getMessage()));
+
     }
 
 
     @Override
     public Mono<String> simulateIntermittency(PetitionDTO petitionDTO) {
-        return null;
+        return petitionRepository.findByPetitionId(petitionDTO.getPetitionId())
+                .switchIfEmpty(Mono.error(new RuntimeException("Petition not found")))
+                .flatMap(petition -> {
+                    if (Math.random() < 0.5) {
+                        return Mono.error(new RuntimeException("Intermitence failure"));
+                        }
+                        return Mono.just("Petition processed: "+petition.getPetitionId());
+                    }
+                )
+                .timeout(Duration.ofSeconds(5))
+                .transformDeferred(CircuitBreakerOperator.of(circuitBreaker))
+                //.retryWhen(Retry.max(3).filter(e -> !(e instanceof CallNotPermittedException)))
+                .retry(1)
+                .onErrorResume(e -> Mono.just("Petition failed: "+petitionDTO.getPetitionId() + " - " + e.getMessage()));
 
     }
 
