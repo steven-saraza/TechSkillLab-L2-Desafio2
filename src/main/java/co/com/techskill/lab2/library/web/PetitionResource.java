@@ -2,6 +2,7 @@ package co.com.techskill.lab2.library.web;
 
 import co.com.techskill.lab2.library.domain.dto.PetitionDTO;
 import co.com.techskill.lab2.library.service.IPetitionService;
+import co.com.techskill.lab2.library.service.dummy.PetitionService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
@@ -11,9 +12,11 @@ import reactor.core.publisher.Mono;
 @RequestMapping("/petitions")
 public class PetitionResource {
     private final IPetitionService petitionService;
+    private final PetitionService petitionServiceDummy;
 
-    public PetitionResource(IPetitionService petitionService){
+    public PetitionResource(IPetitionService petitionService, PetitionService petitionServiceDummy){
         this.petitionService = petitionService;
+        this.petitionServiceDummy = petitionServiceDummy;
     }
 
     @GetMapping("/all")
@@ -44,5 +47,11 @@ public class PetitionResource {
     @PostMapping("/revisar")
     public Flux<String> checkPetitions(@RequestBody PetitionDTO petitionDTO) {
         return petitionService.checkPriorities(petitionDTO);
+    }
+
+    @GetMapping("/dummy/check/flow")
+    public Mono<ResponseEntity<String>> checkPetitionsFlow() {
+        petitionServiceDummy.checkReturn().subscribe();
+        return Mono.just(ResponseEntity.accepted().body("Flujo Iniciado, ver consola del servidor"));
     }
 }
